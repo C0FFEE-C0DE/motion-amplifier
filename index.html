@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0d1013">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Motion Amp">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<title>ขยายการเคลื่อนไหว</title>
+<style>
+:root{--bg:#eef1f4;--panel:#ffffff;--fg:#14181d;--mut:#5d6773;--acc:#0a7fb8;--acc-fg:#ffffff;--bd:#d5dbe1;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1013;--panel:#171c21;--fg:#e8edf2;--mut:#8e99a6;--acc:#58bfef;--acc-fg:#06222f;--bd:#262d35}}
+:root[data-theme="dark"]{--bg:#0d1013;--panel:#171c21;--fg:#e8edf2;--mut:#8e99a6;--acc:#58bfef;--acc-fg:#06222f;--bd:#262d35}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI","Noto Sans Thai",Sarabun,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+.stage{position:relative;flex:1;min-height:0;background:#000;display:flex;align-items:center;justify-content:center}
+#out{width:100%;height:100%;object-fit:contain;display:block}
+#v{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.stat{position:absolute;left:10px;top:10px;font-size:12px;color:#fff;background:rgba(0,0,0,.55);padding:3px 8px;border-radius:6px;font-variant-numeric:tabular-nums}
+.cover{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;text-align:center;background:#0d1013;color:#e8edf2}
+.cover h1{font-size:22px;margin:0;font-weight:700}
+.cover p{margin:0;max-width:34ch;color:#9aa5b1}
+.cover .err{color:#ffb3a7}
+.hide{display:none!important}
+button{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;min-height:44px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.main{background:var(--acc);color:var(--acc-fg);border-color:var(--acc);font-weight:600;padding:12px 26px}
+button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc)}
+.panel{background:var(--panel);border-top:1px solid var(--bd);padding:12px 16px 10px;display:grid;gap:8px}
+.row{display:grid;grid-template-columns:5.5em 1fr 3.6em;align-items:center;gap:10px}
+.row output{text-align:right;color:var(--mut);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--acc);height:28px;margin:0}
+.btns{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:2px}
+.btns button{padding:8px 4px;font-size:14px}
+.hint{margin:0;font-size:12px;color:var(--mut)}
+select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:6px}
+</style>
+</head>
+<body>
+<div class="stage">
+  <canvas id="out" width="192" height="256"></canvas>
+  <video id="v" playsinline muted></video>
+  <div class="stat hide" id="st"></div>
+  <div class="cover" id="cover">
+    <h1>ขยายการเคลื่อนไหวเล็กๆ ให้มองเห็น</h1>
+    <p>ชีพจรที่คอ การหายใจ การสั่นเบาๆ ของวัตถุ — วางมือถือให้นิ่งที่สุดแล้วเล็งไปที่สิ่งที่อยากดู</p>
+    <button class="main" id="go">เปิดกล้อง</button>
+    <p class="err hide" id="err"></p>
+  </div>
+</div>
+<div class="panel">
+  <div class="row"><label for="amp">ความแรง</label><input id="amp" type="range" min="0" max="100" step="1" value="20"><output id="ampo">20</output></div>
+  <div class="row"><label for="lo">ช้าสุด</label><input id="lo" type="range" min="0.1" max="3" step="0.1" value="0.4"><output id="loo">0.4 Hz</output></div>
+  <div class="row"><label for="hi">เร็วสุด</label><input id="hi" type="range" min="0.5" max="10" step="0.1" value="3"><output id="hio">3.0 Hz</output></div>
+  <div class="row"><label for="q">ความละเอียด</label>
+    <select id="q"><option value="192">ต่ำ (ลื่นสุด)</option><option value="256" selected>กลาง</option><option value="320">สูง (เครื่องแรงเท่านั้น)</option></select><span></span></div>
+  <div class="btns">
+    <button id="flip">สลับกล้อง</button>
+    <button id="split" aria-pressed="false">แบ่งจอ</button>
+    <button id="reset">รีเซ็ต</button>
+    <button id="stop">หยุด</button>
+  </div>
+  <p class="hint">แบ่งจอ: ซ้ายคือภาพจริง ขวาคือภาพที่ขยายแล้ว · ถ้าภาพสั่นทั้งจอ ให้ลดความแรงหรือวางมือถือพิงไว้</p>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const video=$('v'),cv=$('out'),octx=cv.getContext('2d');
+const gc=document.createElement('canvas'),gctx=gc.getContext('2d',{willReadFrequently:true});
+const LV=4;
+let stream=null,facing='environment',running=false,S=null,W=0,H=0;
+let amp=20,lo=0.4,hi=3,split=false,fpsUsed=30,fpsEst=30;
+let B=[0,0,0],A=[1,0,0];
+
+function butterBP(lo,hi){
+  const w1=4*Math.tan(Math.PI*lo/2),w2=4*Math.tan(Math.PI*hi/2),bw=w2-w1,d=bw*bw/4-w1*w2,s=Math.sqrt(Math.abs(d));
+  const P=d<0?[[-bw/2,s],[-bw/2,-s]]:[[-bw/2+s,0],[-bw/2-s,0]];
+  const mul=(a,b)=>[a[0]*b[0]-a[1]*b[1],a[0]*b[1]+a[1]*b[0]];
+  const div=(a,b)=>{const m=b[0]*b[0]+b[1]*b[1];return[(a[0]*b[0]+a[1]*b[1])/m,(a[1]*b[0]-a[0]*b[1])/m]};
+  const Z=P.map(p=>div([4+p[0],p[1]],[4-p[0],-p[1]]));
+  const den=mul([4-P[0][0],-P[0][1]],[4-P[1][0],-P[1][1]]);
+  const g=bw*4/den[0],zs=mul(Z[0],Z[1]);
+  return{B:[g,0,-g],A:[1,-(Z[0][0]+Z[1][0]),zs[0]]};
+}
+function updateFilter(){
+  const ny=fpsUsed/2,cl=x=>Math.min(.99,Math.max(.01,x));
+  let l=cl(lo/ny),h=cl(hi/ny);
+  if(l>=h-0.01){h=Math.min(.99,l+0.02);if(l>=h)l=h-0.02}
+  const f=butterBP(l,h);B=f.B;A=f.A;
+}
+
+function down(s,sw,sh,d){const dw=sw>>1,dh=sh>>1;
+  for(let y=0;y<dh;y++){const a=2*y*sw,b=a+sw,o=y*dw;
+    for(let x=0;x<dw;x++){const i=2*x;d[o+x]=.25*(s[a+i]+s[a+i+1]+s[b+i]+s[b+i+1])}}}
+function up(s,sw,sh,d){const dw=sw*2,dh=sh*2;
+  for(let y=0;y<dh;y++){const fy=(y+.5)/2-.5;let y0=Math.floor(fy);const ty=fy-y0;let y1=y0+1;if(y0<0)y0=0;if(y1>=sh)y1=sh-1;
+    const o0=y0*sw,o1=y1*sw,od=y*dw;
+    for(let x=0;x<dw;x++){const fx=(x+.5)/2-.5;let x0=Math.floor(fx);const tx=fx-x0;let x1=x0+1;if(x0<0)x0=0;if(x1>=sw)x1=sw-1;
+      const a=s[o0+x0]*(1-tx)+s[o0+x1]*tx,b=s[o1+x0]*(1-tx)+s[o1+x1]*tx;d[od+x]=a*(1-ty)+b*ty}}}
+function blur(s,d,t,w,h,r){const inv=1/(2*r+1);
+  for(let y=0;y<h;y++){const o=y*w;let m=0;for(let j=-r;j<=r;j++)m+=s[o+(j<0?0:j>=w?w-1:j)];
+    for(let x=0;x<w;x++){t[o+x]=m*inv;const a=x+r+1,b=x-r;m+=s[o+(a>=w?w-1:a)]-s[o+(b<0?0:b)]}}
+  for(let x=0;x<w;x++){let m=0;for(let j=-r;j<=r;j++)m+=t[(j<0?0:j>=h?h-1:j)*w+x];
+    for(let y=0;y<h;y++){d[y*w+x]=m*inv;const a=y+r+1,b=y-r;m+=t[(a>=h?h-1:a)*w+x]-t[(b<0?0:b)*w+x]}}}
+
+function alloc(w,h){
+  const f=n=>new Float32Array(n),Wd=[],Ht=[],N=[];
+  for(let k=0;k<=LV;k++){Wd.push(w>>k);Ht.push(h>>k);N.push((w>>k)*(h>>k))}
+  const m=()=>N.slice(0,LV).map(f);
+  S={w,h,Wd,Ht,N,G:N.map(f),U:m(),L:m(),X:m(),Y:m(),pL:m(),pX:m(),pY:m(),
+     pc:m(),ps:m(),r0c:m(),r1c:m(),r0s:m(),r1s:m(),am:m(),fc:m(),fs:m(),t1:m(),M:m(),C:m(),first:true};
+}
+function pyramid(){
+  const{G,Wd,Ht,L,X,Y,U}=S;
+  for(let k=0;k<LV;k++)down(G[k],Wd[k],Ht[k],G[k+1]);
+  for(let k=0;k<LV;k++){
+    up(G[k+1],Wd[k+1],Ht[k+1],U[k]);
+    const l=L[k],g=G[k],u=U[k],w=Wd[k],h=Ht[k],x=X[k],y=Y[k];
+    for(let i=0;i<l.length;i++)l[i]=g[i]-u[i];
+    for(let r=0;r<h;r++)for(let c=0;c<w;c++){const i=r*w+c;
+      x[i]=.5*(l[i-(c>0?1:0)]-l[i+(c<w-1?1:0)]);
+      y[i]=.5*(l[i-(r>0?w:0)]-l[i+(r<h-1?w:0)])}
+  }
+}
+function proc(k){
+  const n=S.N[k],w=S.Wd[k],h=S.Ht[k];
+  const L=S.L[k],X=S.X[k],Y=S.Y[k],pL=S.pL[k],pX=S.pX[k],pY=S.pY[k];
+  const pc=S.pc[k],ps=S.ps[k],r0c=S.r0c[k],r1c=S.r1c[k],r0s=S.r0s[k],r1s=S.r1s[k];
+  const am=S.am[k],fc=S.fc[k],fs=S.fs[k],t1=S.t1[k],M=S.M[k];
+  const b0=B[0],b1=B[1],b2=B[2],a1=A[1],a2=A[2];
+  for(let i=0;i<n;i++){
+    const cr=L[i],cx=X[i],cy=Y[i],pr=pL[i],px=pX[i],py=pY[i];
+    const qr=cr*pr+cx*px+cy*py,qx=pr*cx-cr*px,qy=pr*cy-cr*py;
+    const qa=Math.sqrt(qr*qr+qx*qx+qy*qy)+1e-8;
+    let c=qr/qa;c=c>1?1:c<-1?-1:c;
+    const ph=Math.acos(c),dn=Math.sqrt(qx*qx+qy*qy)+1e-8,a=Math.sqrt(qa);
+    am[i]=a;
+    const xc=pc[i]+=ph*qx/dn,xs=ps[i]+=ph*qy/dn;
+    const oc=b0*xc+r0c[i];r0c[i]=b1*xc+r1c[i]-a1*oc;r1c[i]=b2*xc-a2*oc;
+    const os=b0*xs+r0s[i];r0s[i]=b1*xs+r1s[i]-a1*os;r1s[i]=b2*xs-a2*os;
+    fc[i]=oc*a;fs[i]=os*a;
+  }
+  blur(fc,fc,t1,w,h,3);blur(fs,fs,t1,w,h,3);blur(am,am,t1,w,h,3);
+  for(let i=0;i<n;i++){
+    const d=am[i]+1e-8,pcx=amp*fc[i]/d,psx=amp*fs[i]/d;
+    const mg=Math.sqrt(pcx*pcx+psx*psx)+1e-8,sn=Math.sin(mg)/mg;
+    M[i]=Math.cos(mg)*L[i]-pcx*sn*X[i]-psx*sn*Y[i];
+  }
+}
+function step(d){
+  const n=S.N[0],Y0=S.G[0];
+  for(let i=0,j=0;i<n;i++,j+=4)Y0[i]=(.299*d[j]+.587*d[j+1]+.114*d[j+2])/255;
+  pyramid();
+  let ok=!S.first;
+  if(ok){
+    for(let k=0;k<LV;k++)proc(k);
+    let cur=S.G[LV];
+    for(let k=LV-1;k>=0;k--){const C=S.C[k],M=S.M[k];up(cur,S.Wd[k+1],S.Ht[k+1],C);for(let i=0;i<C.length;i++)C[i]+=M[i];cur=C}
+    const w=S.w,h=S.h,half=w>>1;
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x;if(split&&x<half)continue;
+      const df=(cur[i]-Y0[i])*255,j=i*4;
+      d[j]+=df;d[j+1]+=df;d[j+2]+=df;
+    }
+  }
+  [S.L,S.pL]=[S.pL,S.L];[S.X,S.pX]=[S.pX,S.X];[S.Y,S.pY]=[S.pY,S.Y];
+  S.first=false;
+}
+
+function dims(){
+  const vw=video.videoWidth,vh=video.videoHeight,m=+$('q').value;
+  let w,h;if(vw>=vh){w=m;h=vh/vw*m}else{h=m;w=vw/vh*m}
+  const r=x=>Math.max(64,Math.round(x/16)*16);return[r(w),r(h)];
+}
+let lastMedia=-1,lastT=0,statT=0,msAvg=0;
+function schedule(){video.requestVideoFrameCallback?video.requestVideoFrameCallback(onFrame):requestAnimationFrame(onFrame)}
+function onFrame(now,meta){
+  if(!running)return;
+  schedule();
+  const mt=meta?meta.mediaTime:video.currentTime;
+  if(mt===lastMedia||video.readyState<2||!video.videoWidth)return;
+  lastMedia=mt;
+  const[w,h]=dims();
+  if(!S||w!==W||h!==H){W=w;H=h;cv.width=w;cv.height=h;gc.width=w;gc.height=h;alloc(w,h)}
+  const t0=performance.now();
+  gctx.drawImage(video,0,0,W,H);
+  const img=gctx.getImageData(0,0,W,H);
+  step(img.data);
+  octx.putImageData(img,0,0);
+  const t1=performance.now();
+  msAvg=msAvg*.9+(t1-t0)*.1;
+  if(lastT){const dt=t0-lastT;if(dt<500)fpsEst=fpsEst*.92+(1000/dt)*.08}
+  lastT=t0;
+  if(t1-statT>1000){
+    statT=t1;
+    $('st').textContent=fpsEst.toFixed(0)+' fps · '+msAvg.toFixed(0)+' ms · '+W+'×'+H;
+    if(Math.abs(fpsEst-fpsUsed)/fpsUsed>.12){fpsUsed=Math.max(5,Math.min(60,fpsEst));updateFilter()}
+  }
+}
+
+async function start(){
+  const err=$('err');err.classList.add('hide');
+  try{
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:640},height:{ideal:480},frameRate:{ideal:30}}});
+    video.srcObject=stream;await video.play();
+    cv.style.transform=facing==='user'?'scaleX(-1)':'none';
+    S=null;lastMedia=-1;lastT=0;fpsUsed=fpsEst=30;updateFilter();
+    $('cover').classList.add('hide');$('st').classList.remove('hide');
+    if(!running){running=true;schedule()}
+  }catch(e){
+    err.textContent='เปิดกล้องไม่ได้ ('+(e.name||e.message)+') — อนุญาตการใช้กล้องในเบราว์เซอร์ หรือเปิดลิงก์นี้ในแท็บเบราว์เซอร์โดยตรง ไม่ใช่ในหน้าพรีวิว';
+    err.classList.remove('hide');
+  }
+}
+function stop(){
+  running=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;S=null;
+  $('cover').classList.remove('hide');$('st').classList.add('hide');
+}
+
+$('go').onclick=start;
+$('stop').onclick=stop;
+$('flip').onclick=()=>{facing=facing==='user'?'environment':'user';if(running)start()};
+$('reset').onclick=()=>{S=null};
+$('split').onclick=e=>{split=!split;e.currentTarget.setAttribute('aria-pressed',split)};
+$('q').onchange=()=>{S=null};
+$('amp').oninput=e=>{amp=+e.target.value;$('ampo').textContent=amp};
+$('lo').oninput=e=>{lo=+e.target.value;$('loo').textContent=lo.toFixed(1)+' Hz';updateFilter()};
+$('hi').oninput=e=>{hi=+e.target.value;$('hio').textContent=hi.toFixed(1)+' Hz';updateFilter()};
+updateFilter();
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
